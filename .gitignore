@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+data/
+artifacts/
+results/
+logs/
+*.pt
+*.pth
+*.ckpt
+node_modules/
+frontend/dist/
+.env
+tmp_uploads/

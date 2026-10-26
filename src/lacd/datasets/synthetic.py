@@ -1,0 +1,109 @@
+"""SYNTHETIC tabletop-style assembly generator for pipeline smoke tests ONLY.
+
+Writes a LOCO-compatible folder tree plus SYNTHETIC.txt and annotations.json (fine subtype labels).
+Results on this data are never real-world benchmark results.
+
+Normal assembly: four coloured parts at fixed relative positions (small jitter).
+  logical    : missing | extra | misplaced   (all parts look normal individually)
+  structural : defect (dark blotch on one part)
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageDraw
+
+PARTS = [  # name, colour, shape, expected (cx, cy) normalised, radius (normalised)
+    ("red_disc", (200, 40, 40), "disc", (0.25, 0.30), 0.09),
+    ("green_square", (40, 160, 60), "square", (0.70, 0.28), 0.09),
+    ("blue_disc", (40, 70, 200), "disc", (0.30, 0.72), 0.09),
+    ("yellow_square", (220, 190, 40), "square", (0.74, 0.70), 0.09),
+]
+
+
+def _draw(draw, shape, colour, cx, cy, r, S):
+    x, y, rr = cx * S, cy * S, r * S
+    box = [x - rr, y - rr, x + rr, y + rr]
+    (draw.ellipse if shape == "disc" else draw.rectangle)(box, fill=colour)
+    return box
+
+
+def make_image(rng, size=128, anomaly=None, jitter=0.015):
+    S = size
+    bg = int(rng.integers(205, 225))
+    arr = np.full((S, S, 3), bg, np.uint8)
+    arr = np.clip(arr + rng.normal(0, 3, arr.shape), 0, 255).astype(np.uint8)
+    img = Image.fromarray(arr)
+    d = ImageDraw.Draw(img)
+    mask = np.zeros((S, S), np.uint8)
+    drop = int(rng.integers(len(PARTS))) if anomaly in ("missing", "misplaced", "defect") else -1
+    comps = []
+    for i, (name, col, shape, (cx, cy), r) in enumerate(PARTS):
+        px, py = cx + rng.normal(0, jitter), cy + rng.normal(0, jitter)
+        if anomaly == "missing" and i == drop:
+            m = Image.new("L", (S, S), 0)
+            ImageDraw.Draw(m).rectangle([(px - r) * S, (py - r) * S, (px + r) * S, (py + r) * S], fill=255)
+            mask |= (np.asarray(m) > 0).astype(np.uint8)
+            continue
+        if anomaly == "misplaced" and i == drop:
+            # shift to a different, still on-table location (appearance unchanged)
+            px, py = (px + 0.30) % 0.9 + 0.05, (py + 0.25) % 0.9 + 0.05
+            m = Image.new("L", (S, S), 0)
+            ImageDraw.Draw(m).rectangle([(px - r) * S, (py - r) * S, (px + r) * S, (py + r) * S], fill=255)
+            mask |= (np.asarray(m) > 0).astype(np.uint8)
+        _draw(d, shape, col, px, py, r, S)
+        comps.append({"name": name, "cx": px, "cy": py})
+        if anomaly == "defect" and i == drop:
+            m = Image.new("L", (S, S), 0)
+            md = ImageDraw.Draw(m)
+            md.ellipse([(px - r * .5) * S, (py - r * .5) * S, (px + r * .5) * S, (py + r * .5) * S], fill=255)
+            d.ellipse([(px - r * .5) * S, (py - r * .5) * S, (px + r * .5) * S, (py + r * .5) * S], fill=(30, 30, 30))
+            mask |= (np.asarray(m) > 0).astype(np.uint8)
+    if anomaly == "extra":
+        name, col, shape, _, r = PARTS[int(rng.integers(len(PARTS)))]
+        px, py = rng.uniform(0.45, 0.55), rng.uniform(0.45, 0.55)
+        box = _draw(d, shape, col, px, py, r, S)
+        m = Image.new("L", (S, S), 0)
+        ImageDraw.Draw(m).rectangle(box, fill=255)
+        mask |= (np.asarray(m) > 0).astype(np.uint8)
+        comps.append({"name": "extra_" + name, "cx": px, "cy": py})
+    return np.asarray(img), mask, comps
+
+
+def generate(root: str | Path, category: str = "synthetic_assembly", n_train=60, n_val=20, n_test_good=20,
+             n_per_anomaly=10, size=128, seed=0) -> Path:
+    rng = np.random.default_rng(seed)
+    cdir = Path(root) / category
+    ann: dict = {}
+
+    def save(split, folder, name, img, mask=None, subtype=None):
+        p = cdir / split / folder
+        p.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(img).save(p / f"{name}.png")
+        if mask is not None:
+            g = cdir / "ground_truth" / folder / name
+            g.mkdir(parents=True, exist_ok=True)
+            Image.fromarray(mask * 255).save(g / "000.png")
+        if subtype:
+            ann[f"{split}/{folder}/{name}.png"] = {"subtype": subtype}
+
+    for i in range(n_train):
+        save("train", "good", f"{i:04d}", make_image(rng, size)[0])
+    for i in range(n_val):
+        save("validation", "good", f"{i:04d}", make_image(rng, size)[0])
+    for i in range(n_test_good):
+        save("test", "good", f"{i:04d}", make_image(rng, size)[0])
+    for sub, folder in (("missing", "logical_anomalies"), ("extra", "logical_anomalies"),
+                        ("misplaced", "logical_anomalies"), ("defect", "structural_anomalies")):
+        for i in range(n_per_anomaly):
+            img, mask, _ = make_image(rng, size, anomaly=sub)
+            save("test", folder, f"{sub}_{i:04d}", img, mask, sub)
+    (cdir / "annotations.json").write_text(json.dumps(ann, indent=1))
+    (cdir / "SYNTHETIC.txt").write_text("SYNTHETIC DATA generated by lacd.datasets.synthetic. "
+                                        "For pipeline smoke tests only; not a real benchmark.\n")
+    (cdir / "assembly_spec.json").write_text(json.dumps(
+        {"expected_components": [{"name": n, "expected_cx": c[0], "expected_cy": c[1]} for n, _, _, c, _ in PARTS]},
+        indent=1))
+    return cdir

@@ -1,0 +1,16 @@
+# CPU-only: install torch from https://download.pytorch.org/whl/cpu ; CUDA: pick the matching index (see README)
+torch>=2.2
+torchvision>=0.17
+numpy>=1.26
+scipy>=1.11
+scikit-learn>=1.3
+pillow>=10
+pyyaml>=6
+pydantic>=2.5
+matplotlib>=3.8
+opencv-python-headless>=4.8
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+pytest>=8
+httpx>=0.27

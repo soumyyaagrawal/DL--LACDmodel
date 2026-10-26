@@ -1,0 +1,10 @@
+# SMOKE TEST ONLY: tiny images, random-init backbone allowed. Not a benchmark configuration.
+seed: 0
+device: auto
+out_dir: artifacts/smoke
+backbone: {name: resnet18, layers: [layer2, layer3], pretrained: true, allow_random_init: true, feature_dim: 64}
+data: {root: data/synthetic, category: synthetic_assembly, image_size: 128, batch_size: 8, max_train_images: null}
+baseline: {coreset_ratio: 0.1, proj_dim: 64, k: 1, blur_sigma: 2.0}
+regions: {n_prototypes: 6, min_area_patches: 2, pca_dim: 6, max_regions: 20, kmeans_samples: 20000}
+relation: {epochs: 60, lr: 0.003, weight_decay: 0.0001, batch_size: 16, hidden: 32, patience: 12}
+score: {alpha: 1.0, beta: 1.0, threshold_percentile: 99.0}

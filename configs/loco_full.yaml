@@ -1,0 +1,10 @@
+# Intended real-benchmark configuration (needs ImageNet weights + the official dataset; GPU recommended).
+seed: 0
+device: auto
+out_dir: artifacts/loco
+backbone: {name: wide_resnet50_2, layers: [layer2, layer3], pretrained: true, allow_random_init: false, feature_dim: 256}
+data: {root: data/mvtec_loco_anomaly_detection, category: breakfast_box, image_size: 256, batch_size: 8}
+baseline: {coreset_ratio: 0.1, proj_dim: 128, k: 1, blur_sigma: 4.0}
+regions: {n_prototypes: 12, min_area_patches: 3, pca_dim: 8, max_regions: 32, kmeans_samples: 100000}
+relation: {epochs: 150, lr: 0.002, weight_decay: 0.0001, batch_size: 16, hidden: 48, patience: 20}
+score: {alpha: 1.0, beta: 1.0, threshold_percentile: 99.0}
